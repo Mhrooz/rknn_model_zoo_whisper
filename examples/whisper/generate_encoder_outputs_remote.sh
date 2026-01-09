@@ -5,23 +5,30 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Remote board configuration
+# Remote board configuration (remote = on-board paths)
 BOARD_IP="${BOARD_IP:-10.204.62.95}"
 BOARD_USER="${BOARD_USER:-hanzhang}"
+# Expand ~ if used in ssh key path
 BOARD_SSH_KEY="${BOARD_SSH_KEY:-~/.ssh/id_rsa}"
-BOARD_WORK_DIR="${BOARD_WORK_DIR:-/home/hanzhang/whisper_work}"
+BOARD_SSH_KEY="${BOARD_SSH_KEY/#\~/$HOME}"
+# Default work dir on the board. Usually on RKNN boards we use /mnt/playground/...
+BOARD_WORK_DIR="${BOARD_WORK_DIR:-/mnt/playground/hanzhang/RTT/whisper_work}"
 
-# Local configuration
+# Local configuration (paths on your host)
 LOCAL_LIBRISPEECH="${LOCAL_LIBRISPEECH:-../../datasets/Librispeech/dev-clean}"
 LOCAL_DUMP_DIR="${LOCAL_DUMP_DIR:-./encoder_dumps}"
+# encoder model on host (will be uploaded to the board)
 ENCODER_MODEL="${ENCODER_MODEL:-./model/whisper_encoder_base_i8_2.rknn}"
-DECODER_MODEL="/home/hanzhang/workspace/RTT/rknn_model_zoo/examples/whisper/model/whisper_decoder_base_i8.rknn"
+# decoder model on host (will be uploaded too). Keep this as a host path.
 DECODER_MODEL="${DECODER_MODEL:-./model/whisper_decoder_base_i8.rknn}"
 TASK="${TASK:-en}"
 MAX_FILES="${MAX_FILES:-500}"
 
-SSH_CMD="ssh -i $BOARD_SSH_KEY $BOARD_USER@$BOARD_IP"
-SCP_CMD="scp -i $BOARD_SSH_KEY"
+# Set NONINTERACTIVE=1 in env to skip interactive prompts (useful for CI)
+NONINTERACTIVE="${NONINTERACTIVE:-0}"
+
+SSH_CMD="ssh -i $BOARD_SSH_KEY -o StrictHostKeyChecking=no $BOARD_USER@$BOARD_IP"
+SCP_CMD="scp -i $BOARD_SSH_KEY -o StrictHostKeyChecking=no"
 
 function print_banner() {
     echo ""
@@ -38,10 +45,10 @@ function print_config() {
     echo "Board SSH Key:       $BOARD_SSH_KEY"
     echo "Board Work Dir:      $BOARD_WORK_DIR"
     echo ""
-    echo "Local Librispeech:   $LOCAL_LIBRISPEECH"
-    echo "Local Dump Dir:      $LOCAL_DUMP_DIR"
-    echo "Encoder Model:       $ENCODER_MODEL"
-    echo "Decoder Model:       $DECODER_MODEL"
+    echo "Local Librispeech:   $LOCAL_LIBRISPEECH  (HOST)"
+    echo "Local Dump Dir:      $LOCAL_DUMP_DIR      (HOST)"
+    echo "Encoder Model:       $ENCODER_MODEL      (HOST -> will be uploaded to board)")
+    echo "Decoder Model:       $DECODER_MODEL      (HOST -> will be uploaded to board)"
     echo "Task:                $TASK"
     echo "Max Files:           $MAX_FILES"
     echo ""
@@ -85,11 +92,17 @@ function upload_models() {
         exit 1
     fi
     
-    echo "Uploading encoder model..."
-    $SCP_CMD "$ENCODER_MODEL" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/model/whisper_encoder.rknn
+    echo "Uploading encoder model to board: $BOARD_WORK_DIR/model/whisper_encoder.rknn"
+    if ! $SCP_CMD "$ENCODER_MODEL" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/model/whisper_encoder.rknn; then
+        echo "❌ Failed to upload encoder model"
+        exit 1
+    fi
     
-    echo "Uploading decoder model..."
-    $SCP_CMD "$DECODER_MODEL" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/model/whisper_decoder.rknn
+    echo "Uploading decoder model to board: $BOARD_WORK_DIR/model/whisper_decoder.rknn"
+    if ! $SCP_CMD "$DECODER_MODEL" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/model/whisper_decoder.rknn; then
+        echo "❌ Failed to upload decoder model"
+        exit 1
+    fi
     
     echo "✅ Models uploaded"
 }
@@ -111,15 +124,20 @@ function upload_executable() {
         exit 1
     fi
     
-    echo "Uploading executable..."
-    $SCP_CMD "$exe_path" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/rknn_whisper_demo
+    echo "Uploading executable to board: $BOARD_WORK_DIR/rknn_whisper_demo"
+    if ! $SCP_CMD "$exe_path" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/rknn_whisper_demo; then
+        echo "❌ Failed to upload executable"
+        exit 1
+    fi
     
     # Upload mel filters
     local mel_filters="$SCRIPT_DIR/cpp/model/mel_80_filters.txt"
     if [ -f "$mel_filters" ]; then
         echo "Uploading mel filters..."
         $SSH_CMD "mkdir -p $BOARD_WORK_DIR/model"
-        $SCP_CMD "$mel_filters" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/model/
+        if ! $SCP_CMD "$mel_filters" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/model/; then
+            echo "⚠️  Warning: failed to upload mel filters"
+        fi
     fi
     
     # Upload vocab files if exist
@@ -224,10 +242,15 @@ echo \"Make sure whisper.cc has: const std::string dump_dir = \\\"$BOARD_WORK_DI
 EOF
 chmod +x $BOARD_WORK_DIR/set_dump_dir.sh"
     
-    echo "⚠️  IMPORTANT: Make sure whisper.cc on your build machine has:"
+    echo "⚠️  IMPORTANT: Make sure whisper.cc on your BUILD MACHINE has:"
     echo "    const std::string dump_dir = \"$BOARD_WORK_DIR/dumps\";"
+    echo "  (This is a REMOTE board path where the executable will write enc_*.bin)"
     echo ""
-    read -p "Press Enter to continue or Ctrl+C to cancel..."
+    if [ "$NONINTERACTIVE" != "1" ]; then
+        read -p "Press Enter to continue or Ctrl+C to cancel..."
+    else
+        echo "NONINTERACTIVE=1 set, proceeding without prompt"
+    fi
     
     # Process in batches to avoid overwhelming the board
     local batch_size=10
@@ -245,7 +268,9 @@ chmod +x $BOARD_WORK_DIR/set_dump_dir.sh"
         upload_audio_batch $batch_num "${batch_files[@]}"
         
         # Process on board
-        process_audio_on_board "${batch_files[@]}"
+        if ! process_audio_on_board "${batch_files[@]}"; then
+            echo "⚠️  Warning: processing batch $batch_num failed on board"
+        fi
         
         # Download results
         download_results $batch_num
@@ -259,10 +284,10 @@ chmod +x $BOARD_WORK_DIR/set_dump_dir.sh"
     done
     
     # Count results
-    local result_count=$(ls -1 "$LOCAL_DUMP_DIR"/enc_*.bin 2>/dev/null | wc -l)
+    local result_count=$(ls -1 "$LOCAL_DUMP_DIR"/enc_*.bin 2>/dev/null | wc -l || true)
     
     echo ""
-    echo "✅ Generated $result_count encoder output files"
+    echo "✅ Generated $result_count encoder output files (if zero, check board logs and dump_dir settings)"
     echo "   Output directory: $LOCAL_DUMP_DIR"
 }
 

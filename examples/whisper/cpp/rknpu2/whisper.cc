@@ -213,7 +213,7 @@ int inference_encoder_model(rknn_app_context_t *app_ctx, std::vector<float> audi
        // goto out;
     }
     static int dump_id = 0;
-    const std::string dump_dir = "/mnt/playground/hanzhang/RTT/whisper_dump"; // 自己改
+    const std::string dump_dir = "/mnt/playground/hanzhang/RTT/whisper_work/dumps"; // 自己改
     ensure_dir(dump_dir);
 
     char in_path[256], out_path[256];
