@@ -157,11 +157,35 @@ function upload_audio_batch() {
     
     echo "  Uploading batch $batch_num (${#batch_files[@]} files)..."
     
-    # Upload audio files
+    # Create temporary directory for converted audio
+    local temp_dir=$(mktemp -d)
+    
+    # Convert FLAC to WAV (board's libsndfile may not support FLAC)
+    echo "  Converting FLAC to WAV format for board compatibility..."
     for audio_file in "${batch_files[@]}"; do
-        local filename=$(basename "$audio_file")
-        $SCP_CMD "$audio_file" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/audio/ > /dev/null 2>&1
+        local filename=$(basename "$audio_file" .flac)
+        local wav_file="$temp_dir/${filename}.wav"
+        
+        # Convert using ffmpeg or sox
+        if command -v ffmpeg >/dev/null 2>&1; then
+            ffmpeg -i "$audio_file" -ar 16000 -ac 1 -sample_fmt s16 "$wav_file" -y > /dev/null 2>&1
+        elif command -v sox >/dev/null 2>&1; then
+            sox "$audio_file" -r 16000 -c 1 -b 16 "$wav_file" > /dev/null 2>&1
+        else
+            echo "  ⚠️  Warning: ffmpeg/sox not found, uploading original FLAC (may fail on board)"
+            cp "$audio_file" "$temp_dir/"
+        fi
     done
+    
+    # Upload converted WAV files
+    for wav_file in "$temp_dir"/*.wav; do
+        if [ -f "$wav_file" ]; then
+            $SCP_CMD "$wav_file" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/audio/ > /dev/null 2>&1
+        fi
+    done
+    
+    # Cleanup
+    rm -rf "$temp_dir"
 }
 
 function process_audio_on_board() {
@@ -220,7 +244,7 @@ count=0
 success=0
 failed=0
 
-for audio in audio/*.flac; do
+for audio in audio/*.wav audio/*.flac; do
     if [ -f \"\$audio\" ]; then
         echo \"\" >> \"\$LOG_FILE\"
         echo \"Processing: \$audio\" | tee -a \"\$LOG_FILE\"
@@ -332,7 +356,7 @@ function download_results() {
 
 function cleanup_board_batch() {
     echo "  Cleaning up board batch files..."
-    $SSH_CMD "rm -f $BOARD_WORK_DIR/audio/*.flac $BOARD_WORK_DIR/dumps/enc_*.bin"
+    $SSH_CMD "rm -f $BOARD_WORK_DIR/audio/*.flac $BOARD_WORK_DIR/audio/*.wav $BOARD_WORK_DIR/dumps/enc_*.bin"
 }
 
 function generate_encoder_outputs() {
