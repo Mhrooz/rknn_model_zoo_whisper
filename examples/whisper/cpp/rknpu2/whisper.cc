@@ -149,7 +149,7 @@ static bool dump_f32_bin(const std::string& path, const float* data, size_t n) {
     return w == n;
 }
 
-int inference_encoder_model(rknn_app_context_t *app_ctx, std::vector<float> audio_data, float *mel_filters, float *encoder_output)
+int inference_encoder_model(rknn_app_context_t *app_ctx, std::vector<float> audio_data, float *mel_filters, float *encoder_output, const char *audio_path)
 {
     int ret;
 
@@ -212,21 +212,37 @@ int inference_encoder_model(rknn_app_context_t *app_ctx, std::vector<float> audi
 
        // goto out;
     }
-    static int dump_id = 0;
+    
+    // Extract filename from audio_path (without extension)
+    std::string audio_filename = "unknown";
+    if (audio_path != nullptr) {
+        const char *basename = strrchr(audio_path, '/');
+        if (basename) {
+            basename++; // skip the '/'
+        } else {
+            basename = audio_path;
+        }
+        
+        // Remove extension
+        audio_filename = basename;
+        size_t dot_pos = audio_filename.rfind('.');
+        if (dot_pos != std::string::npos) {
+            audio_filename = audio_filename.substr(0, dot_pos);
+        }
+    }
+    
     const std::string dump_dir = "/mnt/playground/hanzhang/RTT/whisper_work/dumps"; // 自己改
     ensure_dir(dump_dir);
 
     char in_path[256], out_path[256];
-    snprintf(in_path, sizeof(in_path),  "%s/mel_%06d.bin", dump_dir.c_str(), dump_id);
-    snprintf(out_path, sizeof(out_path), "%s/enc_%06d.bin", dump_dir.c_str(), dump_id);
+    snprintf(in_path, sizeof(in_path),  "%s/mel_%s.bin", dump_dir.c_str(), audio_filename.c_str());
+    snprintf(out_path, sizeof(out_path), "%s/enc_%s.bin", dump_dir.c_str(), audio_filename.c_str());
 
     // mel 输入：1*80*2000（你这里 audio_data 实际就是 mel）
     dump_f32_bin(in_path, (float*)inputs[0].buf, (size_t)N_MELS * (size_t)ENCODER_INPUT_SIZE);
 
     // encoder 输出：1*1000*512
     dump_f32_bin(out_path, (float*)outputs[0].buf, (size_t)ENCODER_OUTPUT_SIZE);
-
-    dump_id++;
 
     memcpy(encoder_output, (float *)outputs[0].buf, ENCODER_OUTPUT_SIZE * sizeof(float));
 
@@ -358,7 +374,7 @@ out:
     return ret;
 }
 
-int inference_whisper_model(rknn_whisper_context_t *app_ctx, std::vector<float> audio_data, float *mel_filters, VocabEntry *vocab, int task_code, std::vector<std::string> &recognized_text)
+int inference_whisper_model(rknn_whisper_context_t *app_ctx, std::vector<float> audio_data, float *mel_filters, VocabEntry *vocab, int task_code, std::vector<std::string> &recognized_text, const char *audio_path)
 {
     int ret;
     // TIMER timer;
@@ -366,7 +382,7 @@ int inference_whisper_model(rknn_whisper_context_t *app_ctx, std::vector<float> 
     recognized_text.clear();
 
     // timer.tik();
-    ret = inference_encoder_model(&app_ctx->encoder_context, audio_data, mel_filters, encoder_output);
+    ret = inference_encoder_model(&app_ctx->encoder_context, audio_data, mel_filters, encoder_output, audio_path);
     if (ret != 0)
     {
         printf("inference_encoder_model fail! ret=%d\n", ret);
