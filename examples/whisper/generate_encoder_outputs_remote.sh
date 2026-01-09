@@ -15,12 +15,12 @@ BOARD_SSH_KEY="${BOARD_SSH_KEY/#\~/$HOME}"
 BOARD_WORK_DIR="${BOARD_WORK_DIR:-/mnt/playground/hanzhang/RTT/whisper_work}"
 
 # Local configuration (paths on your host)
-LOCAL_LIBRISPEECH="${LOCAL_LIBRISPEECH:-../../datasets/Librispeech/dev-clean}"
+LOCAL_LIBRISPEECH="${LOCAL_LIBRISPEECH:-../../datasets/LibriSpeech/dev-clean}"
 LOCAL_DUMP_DIR="${LOCAL_DUMP_DIR:-./encoder_dumps}"
 # encoder model on host (will be uploaded to the board)
-ENCODER_MODEL="${ENCODER_MODEL:-./model/whisper_encoder_base_i8_2.rknn}"
+ENCODER_MODEL="${ENCODER_MODEL:-./model/whisper_encoder_base_20s.rknn}"
 # decoder model on host (will be uploaded too). Keep this as a host path.
-DECODER_MODEL="${DECODER_MODEL:-./model/whisper_decoder_base_i8.rknn}"
+DECODER_MODEL="${DECODER_MODEL:-./model/whisper_decoder_base_20s.rknn}"
 TASK="${TASK:-en}"
 MAX_FILES="${MAX_FILES:-500}"
 
@@ -47,7 +47,7 @@ function print_config() {
     echo ""
     echo "Local Librispeech:   $LOCAL_LIBRISPEECH  (HOST)"
     echo "Local Dump Dir:      $LOCAL_DUMP_DIR      (HOST)"
-    echo "Encoder Model:       $ENCODER_MODEL      (HOST -> will be uploaded to board)")
+    echo "Encoder Model:       $ENCODER_MODEL      (HOST -> will be uploaded to board)"
     echo "Decoder Model:       $DECODER_MODEL      (HOST -> will be uploaded to board)"
     echo "Task:                $TASK"
     echo "Max Files:           $MAX_FILES"
