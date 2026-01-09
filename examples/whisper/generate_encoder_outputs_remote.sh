@@ -158,13 +158,16 @@ function upload_audio_batch() {
     local batch_files=("${@:2}")
     
     echo "  Uploading batch $batch_num (${#batch_files[@]} files)..."
+    echo "  [DEBUG] Creating temp directory..."
     
     # Create temporary directory for converted audio
     local temp_dir=$(mktemp -d)
+    echo "  [DEBUG] Temp dir: $temp_dir"
     
     # Convert FLAC to WAV (board's libsndfile may not support FLAC)
     echo "  Converting FLAC to WAV format for board compatibility..."
     
+    echo "  [DEBUG] Checking for conversion tools..."
     local conversion_tool=""
     if command -v ffmpeg >/dev/null 2>&1; then
         conversion_tool="ffmpeg"
@@ -180,6 +183,8 @@ function upload_audio_batch() {
         exit 1
     fi
     
+    echo "  [DEBUG] Starting conversion of ${#batch_files[@]} files..."
+    
     local converted=0
     local total=${#batch_files[@]}
     
@@ -188,21 +193,26 @@ function upload_audio_batch() {
         local wav_file="$temp_dir/${filename}.wav"
         
         ((converted++))
-        echo "    [$converted/$total] Converting $(basename "$audio_file")..."
+        printf "    [$converted/$total] %-40s" "$(basename "$audio_file")..."
         
-        # Convert using available tool
+        # Convert using available tool (disable set -e temporarily)
+        set +e
         if [ "$conversion_tool" = "ffmpeg" ]; then
-            if ffmpeg -i "$audio_file" -ar 16000 -ac 1 -sample_fmt s16 "$wav_file" -y -loglevel error 2>&1; then
-                echo "      ✅ OK"
-            else
-                echo "      ❌ FAILED"
-            fi
+            ffmpeg -i "$audio_file" -ar 16000 -ac 1 -sample_fmt s16 "$wav_file" -y -loglevel warning 2>/dev/null
+            local ret=$?
         else
-            if sox "$audio_file" -r 16000 -c 1 -b 16 "$wav_file" 2>&1; then
-                echo "      ✅ OK"
-            else
-                echo "      ❌ FAILED"
-            fi
+            sox "$audio_file" -r 16000 -c 1 -b 16 "$wav_file" 2>/dev/null
+            local ret=$?
+        fi
+        set -e
+        
+        if [ $ret -eq 0 ] && [ -f "$wav_file" ]; then
+            echo " ✅"
+        else
+            echo " ❌ FAILED"
+            echo "  ❌ ERROR: Failed to convert $audio_file"
+            rm -rf "$temp_dir"
+            exit 1
         fi
     done
     
@@ -217,11 +227,21 @@ function upload_audio_batch() {
     for wav_file in "$temp_dir"/*.wav; do
         if [ -f "$wav_file" ]; then
             ((uploaded++))
-            echo "    [$uploaded/$total_wav] Uploading $(basename $wav_file)..."
-            if $SCP_CMD "$wav_file" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/audio/ 2>&1 | grep -v "100%"; then
-                echo "      ✅ OK"
+            printf "    [$uploaded/$total_wav] %-40s" "$(basename $wav_file)..."
+            
+            # Disable set -e temporarily for upload
+            set +e
+            $SCP_CMD "$wav_file" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/audio/ >/dev/null 2>&1
+            local ret=$?
+            set -e
+            
+            if [ $ret -eq 0 ]; then
+                echo " ✅"
             else
-                echo "      ❌ FAILED"
+                echo " ❌ FAILED"
+                echo "  ❌ ERROR: Failed to upload $(basename $wav_file)"
+                rm -rf "$temp_dir"
+                exit 1
             fi
         fi
     done
