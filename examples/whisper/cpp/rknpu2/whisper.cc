@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdio>
+#include <string>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -132,6 +135,20 @@ int release_whisper_model(rknn_app_context_t *app_ctx)
     return 0;
 }
 
+
+static void ensure_dir(const std::string& dir) {
+    struct stat st;
+    if (stat(dir.c_str(), &st) != 0) mkdir(dir.c_str(), 0755);
+}
+
+static bool dump_f32_bin(const std::string& path, const float* data, size_t n) {
+    FILE* f = fopen(path.c_str(), "wb");
+    if (!f) return false;
+    size_t w = fwrite(data, sizeof(float), n, f);
+    fclose(f);
+    return w == n;
+}
+
 int inference_encoder_model(rknn_app_context_t *app_ctx, std::vector<float> audio_data, float *mel_filters, float *encoder_output)
 {
     int ret;
@@ -147,13 +164,23 @@ int inference_encoder_model(rknn_app_context_t *app_ctx, std::vector<float> audi
     inputs[0].type = RKNN_TENSOR_FLOAT32;
     inputs[0].size = N_MELS * ENCODER_INPUT_SIZE * sizeof(float);
     inputs[0].buf = (float *)malloc(inputs[0].size);
+    inputs[0].pass_through = 0;
+    inputs[0].fmt = app_ctx->input_attrs[0].fmt;
     memcpy(inputs[0].buf, audio_data.data(), inputs[0].size);
 
     ret = rknn_inputs_set(app_ctx->rknn_ctx, 1, inputs);
     if (ret < 0)
     {
         printf("rknn_input_set fail! ret=%d\n", ret);
-        goto out;
+
+        rknn_outputs_release(app_ctx->rknn_ctx, 1, outputs);
+        if (inputs[0].buf != NULL)
+        {
+            free(inputs[0].buf);
+        }
+
+
+        // goto out;
     }
 
     // Run
@@ -161,7 +188,13 @@ int inference_encoder_model(rknn_app_context_t *app_ctx, std::vector<float> audi
     if (ret < 0)
     {
         printf("rknn_run fail! ret=%d\n", ret);
-        goto out;
+
+        rknn_outputs_release(app_ctx->rknn_ctx, 1, outputs);
+        if (inputs[0].buf != NULL)
+        {
+            free(inputs[0].buf);
+        }
+        // goto out;
     }
 
     // Get Output
@@ -170,12 +203,34 @@ int inference_encoder_model(rknn_app_context_t *app_ctx, std::vector<float> audi
     if (ret < 0)
     {
         printf("rknn_outputs_get fail! ret=%d\n", ret);
-        goto out;
+
+        rknn_outputs_release(app_ctx->rknn_ctx, 1, outputs);
+        if (inputs[0].buf != NULL)
+        {
+            free(inputs[0].buf);
+        }
+
+       // goto out;
     }
+    static int dump_id = 0;
+    const std::string dump_dir = "/mnt/playground/hanzhang/RTT/whisper_dump"; // 自己改
+    ensure_dir(dump_dir);
+
+    char in_path[256], out_path[256];
+    snprintf(in_path, sizeof(in_path),  "%s/mel_%06d.bin", dump_dir.c_str(), dump_id);
+    snprintf(out_path, sizeof(out_path), "%s/enc_%06d.bin", dump_dir.c_str(), dump_id);
+
+    // mel 输入：1*80*2000（你这里 audio_data 实际就是 mel）
+    dump_f32_bin(in_path, (float*)inputs[0].buf, (size_t)N_MELS * (size_t)ENCODER_INPUT_SIZE);
+
+    // encoder 输出：1*1000*512
+    dump_f32_bin(out_path, (float*)outputs[0].buf, (size_t)ENCODER_OUTPUT_SIZE);
+
+    dump_id++;
 
     memcpy(encoder_output, (float *)outputs[0].buf, ENCODER_OUTPUT_SIZE * sizeof(float));
 
-out:
+// out:
 
     // Remeber to release rknn output
     rknn_outputs_release(app_ctx->rknn_ctx, 1, outputs);
@@ -321,12 +376,12 @@ int inference_whisper_model(rknn_whisper_context_t *app_ctx, std::vector<float> 
     // timer.print_time("inference_encoder_model");
 
     // timer.tik();
-    ret = inference_decoder_model(&app_ctx->decoder_context, encoder_output, vocab, task_code, recognized_text);
-    if (ret != 0)
-    {
-        printf("inference_decoder_model fail! ret=%d\n", ret);
-        goto out;
-    }
+    // ret = inference_decoder_model(&app_ctx->decoder_context, encoder_output, vocab, task_code, recognized_text);
+    // if (ret != 0)
+    // {
+    //     printf("inference_decoder_model fail! ret=%d\n", ret);
+    //     goto out;
+    // }
     // timer.tok();
     // timer.print_time("inference_decoder_model");
 

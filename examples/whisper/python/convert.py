@@ -52,7 +52,7 @@ if __name__ == '__main__':
 
     # Build model
     print('--> Building model')
-    ret = rknn.build(do_quantization=do_quant)
+    ret = rknn.build(do_quantization=do_quant,dataset='/home/hanzhang/workspace/RTT/rknn_model_zoo/datasets/test_decode/dataset.txt')
     if ret != 0:
         print('Build model failed!')
         exit(ret)
