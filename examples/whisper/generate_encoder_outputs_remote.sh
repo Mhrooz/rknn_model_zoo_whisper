@@ -168,42 +168,65 @@ function upload_audio_batch() {
     local conversion_tool=""
     if command -v ffmpeg >/dev/null 2>&1; then
         conversion_tool="ffmpeg"
+        echo "  Using: ffmpeg"
     elif command -v sox >/dev/null 2>&1; then
         conversion_tool="sox"
+        echo "  Using: sox"
     else
         echo "  ❌ ERROR: Neither ffmpeg nor sox found. Please install one:"
         echo "     macOS: brew install ffmpeg"
         echo "     Linux: sudo apt-get install ffmpeg"
+        rm -rf "$temp_dir"
         exit 1
     fi
+    
+    local converted=0
+    local total=${#batch_files[@]}
     
     for audio_file in "${batch_files[@]}"; do
         local filename=$(basename "$audio_file" .flac)
         local wav_file="$temp_dir/${filename}.wav"
         
+        ((converted++))
+        echo "    [$converted/$total] Converting $(basename "$audio_file")..."
+        
         # Convert using available tool
         if [ "$conversion_tool" = "ffmpeg" ]; then
-            if ! ffmpeg -i "$audio_file" -ar 16000 -ac 1 -sample_fmt s16 "$wav_file" -y > /dev/null 2>&1; then
-                echo "  ⚠️  Warning: Failed to convert $filename with ffmpeg"
+            if ffmpeg -i "$audio_file" -ar 16000 -ac 1 -sample_fmt s16 "$wav_file" -y -loglevel error 2>&1; then
+                echo "      ✅ OK"
+            else
+                echo "      ❌ FAILED"
             fi
         else
-            if ! sox "$audio_file" -r 16000 -c 1 -b 16 "$wav_file" > /dev/null 2>&1; then
-                echo "  ⚠️  Warning: Failed to convert $filename with sox"
+            if sox "$audio_file" -r 16000 -c 1 -b 16 "$wav_file" 2>&1; then
+                echo "      ✅ OK"
+            else
+                echo "      ❌ FAILED"
             fi
         fi
     done
     
+    echo "  Conversion complete: $converted files processed"
+    
     # Upload ONLY converted WAV files (not FLAC)
+    echo "  Uploading WAV files to board..."
     local uploaded=0
+    local total_wav=$(ls -1 "$temp_dir"/*.wav 2>/dev/null | wc -l)
+    total_wav=$(echo "$total_wav" | tr -d ' ')
+    
     for wav_file in "$temp_dir"/*.wav; do
         if [ -f "$wav_file" ]; then
-            if $SCP_CMD "$wav_file" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/audio/ > /dev/null 2>&1; then
-                ((uploaded++))
+            ((uploaded++))
+            echo "    [$uploaded/$total_wav] Uploading $(basename $wav_file)..."
+            if $SCP_CMD "$wav_file" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/audio/ 2>&1 | grep -v "100%"; then
+                echo "      ✅ OK"
             else
-                echo "  ⚠️  Warning: Failed to upload $(basename $wav_file)"
+                echo "      ❌ FAILED"
             fi
         fi
     done
+    
+    echo "  Upload complete: $uploaded/$total_wav files uploaded"
     
     if [ $uploaded -eq 0 ]; then
         echo "  ❌ ERROR: No WAV files uploaded"
