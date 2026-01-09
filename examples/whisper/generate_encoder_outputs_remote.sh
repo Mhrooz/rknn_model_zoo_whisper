@@ -166,30 +166,116 @@ function upload_audio_batch() {
 
 function process_audio_on_board() {
     local audio_files=("$@")
+    local batch_num=$1
     
     echo "  Processing ${#audio_files[@]} audio files on board..."
     
-    # Create processing script on board
+    # Create processing script on board with detailed logging
     $SSH_CMD "cat > $BOARD_WORK_DIR/process_batch.sh << 'EOF'
 #!/bin/bash
 cd $BOARD_WORK_DIR
+
+# Log file for this batch
+LOG_FILE=\"batch_\$(date +%Y%m%d_%H%M%S).log\"
+echo \"=== Batch processing started at \$(date) ===\" > \"\$LOG_FILE\"
+echo \"Working directory: \$(pwd)\" >> \"\$LOG_FILE\"
+echo \"\" >> \"\$LOG_FILE\"
+
+# Check if executable exists and is executable
+if [ ! -f \"./rknn_whisper_demo\" ]; then
+    echo \"ERROR: rknn_whisper_demo not found\" | tee -a \"\$LOG_FILE\"
+    exit 1
+fi
+
+if [ ! -x \"./rknn_whisper_demo\" ]; then
+    echo \"WARNING: rknn_whisper_demo not executable, fixing...\" | tee -a \"\$LOG_FILE\"
+    chmod +x ./rknn_whisper_demo
+fi
+
+# Check if models exist
+for model in model/whisper_encoder.rknn model/whisper_decoder.rknn; do
+    if [ ! -f \"\$model\" ]; then
+        echo \"ERROR: Model not found: \$model\" | tee -a \"\$LOG_FILE\"
+        exit 1
+    fi
+done
+
+# Check dumps directory
+if [ ! -d \"dumps\" ]; then
+    echo \"Creating dumps directory...\" | tee -a \"\$LOG_FILE\"
+    mkdir -p dumps
+fi
+
+# Test write permission
+if ! touch dumps/test_write 2>/dev/null; then
+    echo \"ERROR: Cannot write to dumps directory\" | tee -a \"\$LOG_FILE\"
+    exit 1
+else
+    rm -f dumps/test_write
+    echo \"dumps directory writable: OK\" | tee -a \"\$LOG_FILE\"
+fi
+
+# Process audio files
 count=0
+success=0
+failed=0
+
 for audio in audio/*.flac; do
     if [ -f \"\$audio\" ]; then
-        ./rknn_whisper_demo \\
+        echo \"\" >> \"\$LOG_FILE\"
+        echo \"Processing: \$audio\" | tee -a \"\$LOG_FILE\"
+        
+        # Run demo and capture output
+        if ./rknn_whisper_demo \\
             model/whisper_encoder.rknn \\
             model/whisper_decoder.rknn \\
             $TASK \\
-            \"\$audio\" > /dev/null 2>&1
+            \"\$audio\" >> \"\$LOG_FILE\" 2>&1; then
+            echo \"  -> SUCCESS\" | tee -a \"\$LOG_FILE\"
+            ((success++))
+        else
+            echo \"  -> FAILED (exit code: \$?)\" | tee -a \"\$LOG_FILE\"
+            ((failed++))
+        fi
         ((count++))
     fi
 done
-echo \"Processed \$count files\"
+
+# Summary
+echo \"\" | tee -a \"\$LOG_FILE\"
+echo \"=== Processing complete at \$(date) ===\" | tee -a \"\$LOG_FILE\"
+echo \"Total: \$count, Success: \$success, Failed: \$failed\" | tee -a \"\$LOG_FILE\"
+
+# Check dumps directory
+enc_count=\$(ls -1 dumps/enc_*.bin 2>/dev/null | wc -l)
+echo \"Generated \$enc_count encoder output files\" | tee -a \"\$LOG_FILE\"
+
+if [ \$enc_count -eq 0 ]; then
+    echo \"WARNING: No enc_*.bin files generated!\" | tee -a \"\$LOG_FILE\"
+    echo \"Checking dumps directory:\" | tee -a \"\$LOG_FILE\"
+    ls -lah dumps/ >> \"\$LOG_FILE\" 2>&1
+fi
+
+# Keep log file for debugging
+echo \"Log file: \$LOG_FILE\"
 EOF
 chmod +x $BOARD_WORK_DIR/process_batch.sh"
     
-    # Execute processing
-    $SSH_CMD "$BOARD_WORK_DIR/process_batch.sh"
+    # Execute processing and capture output
+    echo "  Executing on board (this may take a while)..."
+    if ! $SSH_CMD "$BOARD_WORK_DIR/process_batch.sh" 2>&1 | tee /tmp/board_output_$$.log; then
+        echo "  ⚠️  Remote execution returned non-zero exit code"
+    fi
+    
+    # Download and display the log file
+    local log_file=$($SSH_CMD "ls -t $BOARD_WORK_DIR/batch_*.log 2>/dev/null | head -1" || echo "")
+    if [ -n "$log_file" ]; then
+        echo ""
+        echo "  📄 Fetching detailed log from board..."
+        $SSH_CMD "cat $log_file" | tee /tmp/board_detailed_$$.log
+        echo ""
+        echo "  💾 Board log saved locally: /tmp/board_detailed_$$.log"
+    fi
 }
 
 function download_results() {
@@ -197,11 +283,51 @@ function download_results() {
     
     echo "  Downloading results from board..."
     
+    # Check how many files exist on board first
+    local remote_count=$($SSH_CMD "ls -1 $BOARD_WORK_DIR/dumps/enc_*.bin 2>/dev/null | wc -l" || echo "0")
+    remote_count=$(echo "$remote_count" | tr -d ' ')
+    
+    echo "  Found $remote_count enc_*.bin files on board"
+    
+    if [ "$remote_count" -eq 0 ]; then
+        echo "  ⚠️  WARNING: No encoder output files found on board!"
+        echo "  Checking board dumps directory..."
+        $SSH_CMD "ls -lah $BOARD_WORK_DIR/dumps/ 2>&1" || true
+        echo ""
+        echo "  Checking if program wrote to a different location..."
+        $SSH_CMD "find $BOARD_WORK_DIR -name 'enc_*.bin' 2>/dev/null" || true
+        return 1
+    fi
+    
     # Download all enc_*.bin files
-    $SSH_CMD "ls $BOARD_WORK_DIR/dumps/enc_*.bin 2>/dev/null" | while read remote_file; do
-        local filename=$(basename "$remote_file")
-        $SCP_CMD $BOARD_USER@$BOARD_IP:$remote_file "$LOCAL_DUMP_DIR/" > /dev/null 2>&1
-    done
+    mkdir -p "$LOCAL_DUMP_DIR"
+    
+    # Use rsync if available for better progress, otherwise use scp
+    if command -v rsync >/dev/null 2>&1; then
+        rsync -avz -e "ssh -i $BOARD_SSH_KEY -o StrictHostKeyChecking=no" \
+            $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/dumps/enc_*.bin "$LOCAL_DUMP_DIR/" 2>&1 || {
+            echo "  ⚠️  rsync failed, trying scp..."
+            $SCP_CMD $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/dumps/enc_\*.bin "$LOCAL_DUMP_DIR/" 2>&1
+        }
+    else
+        # scp with explicit file list
+        $SSH_CMD "ls $BOARD_WORK_DIR/dumps/enc_*.bin 2>/dev/null" | while read remote_file; do
+            local filename=$(basename "$remote_file")
+            echo "    Downloading $filename..."
+            if ! $SCP_CMD $BOARD_USER@$BOARD_IP:$remote_file "$LOCAL_DUMP_DIR/" 2>&1; then
+                echo "    ⚠️  Failed to download $filename"
+            fi
+        done
+    fi
+    
+    # Verify downloads
+    local local_count=$(ls -1 "$LOCAL_DUMP_DIR"/enc_*.bin 2>/dev/null | wc -l)
+    local_count=$(echo "$local_count" | tr -d ' ')
+    echo "  Downloaded $local_count of $remote_count files to: $LOCAL_DUMP_DIR"
+    
+    if [ "$local_count" -lt "$remote_count" ]; then
+        echo "  ⚠️  WARNING: Not all files were downloaded!"
+    fi
 }
 
 function cleanup_board_batch() {
