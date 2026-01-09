@@ -131,17 +131,19 @@ function upload_executable() {
     fi
     
     # Upload mel filters
-    local mel_filters="$SCRIPT_DIR/cpp/model/mel_80_filters.txt"
+    local mel_filters="$SCRIPT_DIR/model/mel_80_filters.txt"
     if [ -f "$mel_filters" ]; then
         echo "Uploading mel filters..."
         $SSH_CMD "mkdir -p $BOARD_WORK_DIR/model"
         if ! $SCP_CMD "$mel_filters" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/model/; then
             echo "⚠️  Warning: failed to upload mel filters"
         fi
+    else
+        echo "⚠️  Warning: mel_80_filters.txt not found at $mel_filters"
     fi
     
     # Upload vocab files if exist
-    for vocab in "$SCRIPT_DIR/cpp/model/vocab_en.txt" "$SCRIPT_DIR/cpp/model/vocab_zh.txt"; do
+    for vocab in "$SCRIPT_DIR/model/vocab_en.txt" "$SCRIPT_DIR/model/vocab_zh.txt"; do
         if [ -f "$vocab" ]; then
             echo "Uploading $(basename $vocab)..."
             $SCP_CMD "$vocab" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/model/
@@ -162,27 +164,52 @@ function upload_audio_batch() {
     
     # Convert FLAC to WAV (board's libsndfile may not support FLAC)
     echo "  Converting FLAC to WAV format for board compatibility..."
+    
+    local conversion_tool=""
+    if command -v ffmpeg >/dev/null 2>&1; then
+        conversion_tool="ffmpeg"
+    elif command -v sox >/dev/null 2>&1; then
+        conversion_tool="sox"
+    else
+        echo "  ❌ ERROR: Neither ffmpeg nor sox found. Please install one:"
+        echo "     macOS: brew install ffmpeg"
+        echo "     Linux: sudo apt-get install ffmpeg"
+        exit 1
+    fi
+    
     for audio_file in "${batch_files[@]}"; do
         local filename=$(basename "$audio_file" .flac)
         local wav_file="$temp_dir/${filename}.wav"
         
-        # Convert using ffmpeg or sox
-        if command -v ffmpeg >/dev/null 2>&1; then
-            ffmpeg -i "$audio_file" -ar 16000 -ac 1 -sample_fmt s16 "$wav_file" -y > /dev/null 2>&1
-        elif command -v sox >/dev/null 2>&1; then
-            sox "$audio_file" -r 16000 -c 1 -b 16 "$wav_file" > /dev/null 2>&1
+        # Convert using available tool
+        if [ "$conversion_tool" = "ffmpeg" ]; then
+            if ! ffmpeg -i "$audio_file" -ar 16000 -ac 1 -sample_fmt s16 "$wav_file" -y > /dev/null 2>&1; then
+                echo "  ⚠️  Warning: Failed to convert $filename with ffmpeg"
+            fi
         else
-            echo "  ⚠️  Warning: ffmpeg/sox not found, uploading original FLAC (may fail on board)"
-            cp "$audio_file" "$temp_dir/"
+            if ! sox "$audio_file" -r 16000 -c 1 -b 16 "$wav_file" > /dev/null 2>&1; then
+                echo "  ⚠️  Warning: Failed to convert $filename with sox"
+            fi
         fi
     done
     
-    # Upload converted WAV files
+    # Upload ONLY converted WAV files (not FLAC)
+    local uploaded=0
     for wav_file in "$temp_dir"/*.wav; do
         if [ -f "$wav_file" ]; then
-            $SCP_CMD "$wav_file" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/audio/ > /dev/null 2>&1
+            if $SCP_CMD "$wav_file" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/audio/ > /dev/null 2>&1; then
+                ((uploaded++))
+            else
+                echo "  ⚠️  Warning: Failed to upload $(basename $wav_file)"
+            fi
         fi
     done
+    
+    if [ $uploaded -eq 0 ]; then
+        echo "  ❌ ERROR: No WAV files uploaded"
+        rm -rf "$temp_dir"
+        exit 1
+    fi
     
     # Cleanup
     rm -rf "$temp_dir"
@@ -244,7 +271,8 @@ count=0
 success=0
 failed=0
 
-for audio in audio/*.wav audio/*.flac; do
+# Only process WAV files (not FLAC - those are not uploaded)
+for audio in audio/*.wav; do
     if [ -f \"\$audio\" ]; then
         echo \"\" >> \"\$LOG_FILE\"
         echo \"Processing: \$audio\" | tee -a \"\$LOG_FILE\"
@@ -356,7 +384,8 @@ function download_results() {
 
 function cleanup_board_batch() {
     echo "  Cleaning up board batch files..."
-    $SSH_CMD "rm -f $BOARD_WORK_DIR/audio/*.flac $BOARD_WORK_DIR/audio/*.wav $BOARD_WORK_DIR/dumps/enc_*.bin"
+    # Only clean WAV files (we don't upload FLAC anymore)
+    $SSH_CMD "rm -f $BOARD_WORK_DIR/audio/*.wav $BOARD_WORK_DIR/dumps/enc_*.bin"
 }
 
 function generate_encoder_outputs() {
