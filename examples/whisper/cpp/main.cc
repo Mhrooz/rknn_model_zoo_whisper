@@ -145,7 +145,7 @@ int main(int argc, char **argv)
     timer.tik();
     audio_preprocess(&audio, mel_filters, audio_data);
 
-    ret = inference_whisper_model(&rknn_app_ctx, audio_data, mel_filters, vocab, task_code, recognized_text);
+    ret = inference_whisper_model(&rknn_app_ctx, audio_data, mel_filters, vocab, task_code, recognized_text, audio_path);
     if (ret != 0)
     {
         printf("inference_whisper_model fail! ret=%d\n", ret);
