@@ -184,15 +184,23 @@ function upload_audio_batch() {
     fi
     
     echo "  [DEBUG] Starting conversion of ${#batch_files[@]} files..."
+    echo "  [DEBUG] First file: ${batch_files[0]}"
+    if [ ! -f "${batch_files[0]}" ]; then
+        echo "  ❌ ERROR: First audio file not found: ${batch_files[0]}"
+        rm -rf "$temp_dir"
+        exit 1
+    fi
     
     local converted=0
     local total=${#batch_files[@]}
     
+    echo "  [DEBUG] Entering for loop..."
     for audio_file in "${batch_files[@]}"; do
+        echo "  [DEBUG] Loop iteration: audio_file=$audio_file"
         local filename=$(basename "$audio_file" .flac)
         local wav_file="$temp_dir/${filename}.wav"
         
-        ((converted++))
+        converted=$((converted + 1))  # Safe for set -e
         printf "    [$converted/$total] %-40s" "$(basename "$audio_file")..."
         
         # Convert using available tool (disable set -e temporarily)
@@ -226,7 +234,7 @@ function upload_audio_batch() {
     
     for wav_file in "$temp_dir"/*.wav; do
         if [ -f "$wav_file" ]; then
-            ((uploaded++))
+            uploaded=$((uploaded + 1))  # Safe for set -e
             printf "    [$uploaded/$total_wav] %-40s" "$(basename $wav_file)..."
             
             # Disable set -e temporarily for upload
