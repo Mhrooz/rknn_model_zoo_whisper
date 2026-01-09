@@ -13,7 +13,7 @@ EXEC_MODE="${EXEC_MODE:-remote}"  # remote by default for RK3588
 BOARD_IP="${BOARD_IP:-10.204.62.95}"
 BOARD_USER="${BOARD_USER:-hanzhang}"
 BOARD_SSH_KEY="${BOARD_SSH_KEY:-~/.ssh/id_rsa}"
-BOARD_WORK_DIR="${BOARD_WORK_DIR:-/home/hanzhang/whisper_work}"
+BOARD_WORK_DIR="${BOARD_WORK_DIR:-/mnt/playground/hanzhang/RTT/whisper_work}"
 
 # Dataset configuration
 LIBRISPEECH_DIR="${LIBRISPEECH_DIR:-$PROJECT_ROOT/datasets/Librispeech/dev-clean}"
@@ -21,9 +21,9 @@ DUMP_DIR="${DUMP_DIR:-$SCRIPT_DIR/encoder_dumps}"
 CALIB_DIR="${CALIB_DIR:-$SCRIPT_DIR/decoder_calib}"
 
 # Model configuration
-ENCODER_MODEL="${ENCODER_MODEL:-$SCRIPT_DIR/cpp/model/whisper_encoder.rknn}"
+ENCODER_MODEL="${ENCODER_MODEL:-$SCRIPT_DIR/model/whisper_encoder_base_i8_2.rknn}"
 DECODER_ONNX="${DECODER_ONNX:-$SCRIPT_DIR/model/whisper_decoder.onnx}"
-DECODER_MODEL_OUT="${DECODER_MODEL_OUT:-$SCRIPT_DIR/model/whisper_decoder_int8.rknn}"
+DECODER_MODEL_OUT="${DECODER_MODEL_OUT:-$SCRIPT_DIR/model/whisper_decoder_base_i8.rknn}"
 
 # Processing parameters
 TASK="${TASK:-en}"

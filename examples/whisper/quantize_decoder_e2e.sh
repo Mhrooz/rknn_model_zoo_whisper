@@ -8,7 +8,7 @@ PROJECT_ROOT="$SCRIPT_DIR/../.."
 
 # Default configuration
 LIBRISPEECH_DIR="${LIBRISPEECH_DIR:-$PROJECT_ROOT/datasets/Librispeech/dev-clean}"
-DUMP_DIR="${DUMP_DIR:-/tmp/whisper_encoder_dumps}"
+DUMP_DIR="${DUMP_DIR:-/mnt/playground/hanzhang/RTT/whisper_encoder_dumps}"
 CALIB_DIR="${CALIB_DIR:-$SCRIPT_DIR/decoder_calib}"
 ENCODER_MODEL="${ENCODER_MODEL:-$SCRIPT_DIR/model/whisper_encoder.rknn}"
 DECODER_ONNX="${DECODER_ONNX:-$SCRIPT_DIR/model/whisper_decoder.onnx}"

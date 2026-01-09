@@ -14,8 +14,9 @@ BOARD_WORK_DIR="${BOARD_WORK_DIR:-/home/hanzhang/whisper_work}"
 # Local configuration
 LOCAL_LIBRISPEECH="${LOCAL_LIBRISPEECH:-../../datasets/Librispeech/dev-clean}"
 LOCAL_DUMP_DIR="${LOCAL_DUMP_DIR:-./encoder_dumps}"
-ENCODER_MODEL="${ENCODER_MODEL:-./model/whisper_encoder.rknn}"
-DECODER_MODEL="${DECODER_MODEL:-./model/whisper_decoder.rknn}"
+ENCODER_MODEL="${ENCODER_MODEL:-./model/whisper_encoder_base_i8_2.rknn}"
+DECODER_MODEL="/home/hanzhang/workspace/RTT/rknn_model_zoo/examples/whisper/model/whisper_decoder_base_i8.rknn"
+DECODER_MODEL="${DECODER_MODEL:-./model/whisper_decoder_base_i8.rknn}"
 TASK="${TASK:-en}"
 MAX_FILES="${MAX_FILES:-500}"
 
