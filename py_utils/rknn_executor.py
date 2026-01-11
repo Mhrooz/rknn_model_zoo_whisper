@@ -55,7 +55,8 @@ class RKNN_model_container():
 
 if __name__ == "__main__":
 
-    whisper_encoder_model = RKNN_model_container('model/whisper_encoder_base_20s_fp16.rknn', target='RK3588')
-    whisper_encoder_model.analyze_accuracy(['model/test_en_encoder_input.npy'], target='rk3588')
+    whisper_zoo_path = '/mnt/playground/hanzhang/RTT/rknn_model_zoo/examples/whisper/'
+    whisper_encoder_model = RKNN_model_container(f'{whisper_zoo_path}model/whisper_encoder_base_20s_fp16.rknn', target='RK3588')
+    whisper_encoder_model.analyze_accuracy([f'{whisper_zoo_path}model/test_en_encoder_input.npy'], target='rk3588')
 
     pass
