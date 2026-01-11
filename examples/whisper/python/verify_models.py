@@ -92,27 +92,24 @@ def test_encoder(model_path, check_only=False):
     print(f"加载模型: {model_path}")
 
     from rknnlite.api import RKNNLite
-    rknn = RKNNLite()
-    print("使用 RKNNLite (板上 NPU 推理)")
-    
+    rknn = RKNNLite(verbose=True, verbose_file='./rknn_lite_debug_encoder.log')
+
     ret = rknn.load_rknn(model_path)
     if ret != 0:
         print(f"❌ 加载模型失败: {ret}")
         return False
     
-    print("初始化运行时环境...")
-    if use_lite:
-        # RKNNLite 直接初始化，会使用 NPU
-        ret = rknn_lite.init_runtime()
-    else:
-        # RKNN 需要指定 target (但在 PC 上会失败)
-        ret = rknn.init_runtime()
-    
+    ret = rknn.init_runtime(core_mask = RKNNLite.NPU_CORE_AUTO)
+   
     if ret != 0:
         print(f"❌ 初始化失败: {ret}")
         rknn.release()
         return False
+ 
+    print("使用 RKNNLite (板上 NPU 推理)")
     
+   
+   
     # 创建模拟输入 (mel features: 1 x 80 x 3000)
     print("\n创建测试输入 (1, 80, 3000) - 模拟 30 秒音频的 mel 特征")
     mel_input = np.random.randn(1, 80, 3000).astype(np.float32)
@@ -204,31 +201,29 @@ def test_decoder(model_path, check_only=False):
     print(f"加载模型: {model_path}")
 
     from rknnlite.api import RKNNLite
-    rknn = RKNNLite()
-    print("使用 RKNNLite (板上 NPU 推理)")
-    
+    rknn = RKNNLite(verbose=True, verbose_file='./rknn_lite_debug_decoder.log')
+
     ret = rknn.load_rknn(model_path)
     if ret != 0:
         print(f"❌ 加载模型失败: {ret}")
         return False
     
-    print("初始化运行时环境...")
-    if use_lite:
-        # RKNNLite 直接初始化，会使用 NPU
-        ret = rknn.init_runtime()
-    else:
-        # RKNN 需要指定 target (但在 PC 上会失败)
-        ret = rknn.init_runtime()
-    
+
+    ret = rknn.init_runtime(core_mask = RKNNLite.NPU_CORE_AUTO)
+
     if ret != 0:
         print(f"❌ 初始化失败: {ret}")
         rknn.release()
         return False
+ 
+    print("使用 RKNNLite (板上 NPU 推理)")
     
+       
+   
     # 创建模拟输入
     print("\n创建测试输入:")
-    print("  Encoder 输出: (1, 1500, 512)")
-    encoder_out = np.random.randn(1, 1500, 512).astype(np.float32)
+    print("  Encoder 输出: (1, 1000, 512)")
+    encoder_out = np.random.randn(1, 1000, 512).astype(np.float32)
     
     print("  Token 序列: (1, 4) - [50258, 50259, 50360, 1220]")
     # 50258: <|startoftranscript|>
