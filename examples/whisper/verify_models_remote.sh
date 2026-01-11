@@ -9,6 +9,7 @@ BOARD_USER="${BOARD_USER:-hanzhang}"
 BOARD_SSH_KEY="${BOARD_SSH_KEY:-~/.ssh/id_rsa}"
 BOARD_SSH_KEY="${BOARD_SSH_KEY/#\~/$HOME}"
 BOARD_WORK_DIR="${BOARD_WORK_DIR:-/mnt/playground/hanzhang/RTT/whisper_work}"
+BOARD_PYTHON="${BOARD_PYTHON:-/mnt/playground/hanzhang/RTT/rknn_model_zoo/.venv/bin/python}"
 
 SSH_CMD="ssh -i $BOARD_SSH_KEY -o StrictHostKeyChecking=no $BOARD_USER@$BOARD_IP"
 SCP_CMD="scp -i $BOARD_SSH_KEY -o StrictHostKeyChecking=no"
@@ -19,6 +20,7 @@ echo "=================================================="
 echo ""
 echo "开发板: $BOARD_USER@$BOARD_IP"
 echo "工作目录: $BOARD_WORK_DIR"
+echo "Python: $BOARD_PYTHON"
 echo ""
 
 # 检查连接
@@ -42,7 +44,16 @@ echo ""
 # 在板上运行
 echo "在开发板上执行验证..."
 echo "=================================================="
-$SSH_CMD "which python3 && cd $BOARD_WORK_DIR && python3 verify_models.py \
+
+# 检查 Python 环境是否存在
+echo "检查 Python 环境..."
+if ! $SSH_CMD "test -f $BOARD_PYTHON"; then
+    echo "⚠️  警告: 指定的 Python 不存在: $BOARD_PYTHON"
+    echo "尝试使用系统 Python..."
+    BOARD_PYTHON="python3"
+fi
+
+$SSH_CMD "cd $BOARD_WORK_DIR && $BOARD_PYTHON verify_models.py \
   --encoder model/whisper_encoder.rknn \
   --decoder model/whisper_decoder.rknn"
 
