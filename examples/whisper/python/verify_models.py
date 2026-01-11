@@ -316,9 +316,9 @@ def main():
     )
     parser.add_argument('--check-only', action='store_true',
                         help='仅检查模型文件，不执行推理（PC 上使用）')
-    parser.add_argument('--encoder', default='model/whisper_encoder_base_i8_2.rknn',
+    parser.add_argument('--encoder', default='model/whisper_encoder_base_20s_i8_2.rknn',
                         help='Encoder 模型路径')
-    parser.add_argument('--decoder', default='model/whisper_decoder_base_i8.rknn',
+    parser.add_argument('--decoder', default='model/whisper_decoder_base_20s_i8.rknn',
                         help='Decoder 模型路径')
     
     args = parser.parse_args()
