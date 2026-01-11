@@ -22,7 +22,8 @@ def is_arm_board():
 try:
     from rknnlite.api import RKNNLite
     HAS_RKNN_LITE = True
-    HAS_RKNN = False
+    # from rknn.api import RKNN
+    # HAS_RKNN = True
     print("✅ 使用 rknn-toolkit-lite2 (板上推理)")
 except ImportError:
     HAS_RKNN_LITE = False
@@ -86,6 +87,7 @@ def test_encoder(model_path, check_only=False):
     
     # 优先使用 rknn-lite (板上推理)
     use_lite = HAS_RKNN_LITE and is_arm_board()
+    print(f"使用 {'RKNNLite' if use_lite else 'RKNN'} 进行推理测试")
     
     if not use_lite and not is_arm_board():
         print("⚠️  警告: 不在 ARM 板上，RKNN 推理可能失败")
@@ -114,7 +116,7 @@ def test_encoder(model_path, check_only=False):
     print("初始化运行时环境...")
     if use_lite:
         # RKNNLite 直接初始化，会使用 NPU
-        ret = rknn.init_runtime()
+        ret = rknn_lite.init_runtime()
     else:
         # RKNN 需要指定 target (但在 PC 上会失败)
         ret = rknn.init_runtime()
