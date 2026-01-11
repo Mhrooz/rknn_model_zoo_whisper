@@ -210,8 +210,8 @@ def main():
     print("="*60)
     
     # 模型路径
-    encoder_path = "model/whisper_encoder_base_i8_2.rknn"
-    decoder_path = "model/whisper_decoder_base_i8.rknn"
+    encoder_path = "model/whisper_encoder_base_20s_i8_2.rknn"
+    decoder_path = "model/whisper_decoder_base_20s_i8.rknn"
     
     # 测试 Encoder
     encoder_ok = test_encoder(encoder_path)
