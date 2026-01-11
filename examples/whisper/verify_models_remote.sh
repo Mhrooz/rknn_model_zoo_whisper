@@ -42,7 +42,7 @@ echo ""
 # 在板上运行
 echo "在开发板上执行验证..."
 echo "=================================================="
-$SSH_CMD "cd $BOARD_WORK_DIR && python3 verify_models.py \
+$SSH_CMD "which python3 && cd $BOARD_WORK_DIR && python3 verify_models.py \
   --encoder model/whisper_encoder.rknn \
   --decoder model/whisper_decoder.rknn"
 
