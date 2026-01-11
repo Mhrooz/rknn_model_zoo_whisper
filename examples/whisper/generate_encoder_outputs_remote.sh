@@ -27,6 +27,16 @@ MAX_FILES="${MAX_FILES:-500}"
 # Set NONINTERACTIVE=1 in env to skip interactive prompts (useful for CI)
 NONINTERACTIVE="${NONINTERACTIVE:-0}"
 
+# Skip steps for faster debugging (set to 1 to skip):
+# SKIP_UPLOAD_MODELS=1    - Skip uploading encoder/decoder models
+# SKIP_UPLOAD_EXE=1       - Skip uploading executable
+# SKIP_UPLOAD_DEPS=1      - Skip uploading mel_filters and vocab files
+# SKIP_SETUP_BOARD=1      - Skip all uploads (models, exe, deps)
+SKIP_UPLOAD_MODELS="${SKIP_UPLOAD_MODELS:-0}"
+SKIP_UPLOAD_EXE="${SKIP_UPLOAD_EXE:-0}"
+SKIP_UPLOAD_DEPS="${SKIP_UPLOAD_DEPS:-0}"
+SKIP_SETUP_BOARD="${SKIP_SETUP_BOARD:-0}"
+
 SSH_CMD="ssh -i $BOARD_SSH_KEY -o StrictHostKeyChecking=no $BOARD_USER@$BOARD_IP"
 SCP_CMD="scp -i $BOARD_SSH_KEY -o StrictHostKeyChecking=no"
 
@@ -37,6 +47,34 @@ function print_banner() {
     echo "=================================================="
     echo ""
 }
+
+function print_usage() {
+    cat << 'EOF'
+Usage: ./generate_encoder_outputs_remote.sh
+
+Environment variables for skipping steps (useful for debugging):
+  SKIP_SETUP_BOARD=1     Skip all uploads (models, executable, deps)
+  SKIP_UPLOAD_MODELS=1   Skip uploading encoder/decoder models
+  SKIP_UPLOAD_EXE=1      Skip uploading executable
+  SKIP_UPLOAD_DEPS=1     Skip uploading mel_filters and vocab files
+  NONINTERACTIVE=1       Skip interactive prompts
+
+Examples:
+  # First run - upload everything
+  ./generate_encoder_outputs_remote.sh
+  
+  # Quick rerun - skip model uploads (models already on board)
+  SKIP_UPLOAD_MODELS=1 ./generate_encoder_outputs_remote.sh
+  
+  # After recompiling - only upload new executable
+  SKIP_UPLOAD_MODELS=1 SKIP_UPLOAD_DEPS=1 ./generate_encoder_outputs_remote.sh
+  
+  # Skip all uploads - just process audio (board already set up)
+  SKIP_SETUP_BOARD=1 NONINTERACTIVE=1 ./generate_encoder_outputs_remote.sh
+
+EOF
+}
+
 
 function print_config() {
     print_banner "Remote Execution Configuration"
@@ -82,6 +120,11 @@ function prepare_board() {
 function upload_models() {
     print_banner "Step 3: Uploading Models to Board"
     
+    if [ "$SKIP_SETUP_BOARD" = "1" ] || [ "$SKIP_UPLOAD_MODELS" = "1" ]; then
+        echo "⏭️  Skipping model upload (SKIP_UPLOAD_MODELS=1)"
+        return 0
+    fi
+    
     if [ ! -f "$ENCODER_MODEL" ]; then
         echo "❌ Encoder model not found: $ENCODER_MODEL"
         exit 1
@@ -110,6 +153,11 @@ function upload_models() {
 function upload_executable() {
     print_banner "Step 4: Uploading Executable"
     
+    if [ "$SKIP_SETUP_BOARD" = "1" ] || [ "$SKIP_UPLOAD_EXE" = "1" ]; then
+        echo "⏭️  Skipping executable upload (SKIP_UPLOAD_EXE=1)"
+        return 0
+    fi
+    
     local exe_path="$SCRIPT_DIR/cpp/build/rknn_whisper_demo"
     
     if [ ! -f "$exe_path" ]; then
@@ -128,6 +176,12 @@ function upload_executable() {
     if ! $SCP_CMD "$exe_path" $BOARD_USER@$BOARD_IP:$BOARD_WORK_DIR/rknn_whisper_demo; then
         echo "❌ Failed to upload executable"
         exit 1
+    fi
+    
+    if [ "$SKIP_UPLOAD_DEPS" = "1" ]; then
+        echo "⏭️  Skipping dependency files upload (SKIP_UPLOAD_DEPS=1)"
+        echo "✅ Executable uploaded"
+        return 0
     fi
     
     # Upload mel filters
@@ -583,14 +637,33 @@ function cleanup_board() {
 }
 
 function main() {
+    # Check for help flag
+    if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+        print_usage
+        exit 0
+    fi
+    
     print_banner "Whisper Encoder Remote Execution Script"
+    
+    # Show skip status if any skips are enabled
+    if [ "$SKIP_SETUP_BOARD" = "1" ] || [ "$SKIP_UPLOAD_MODELS" = "1" ] || [ "$SKIP_UPLOAD_EXE" = "1" ] || [ "$SKIP_UPLOAD_DEPS" = "1" ]; then
+        echo "🚀 Quick Run Mode - Skipping:"
+        [ "$SKIP_SETUP_BOARD" = "1" ] && echo "   ⏭️  All uploads (SKIP_SETUP_BOARD=1)"
+        [ "$SKIP_UPLOAD_MODELS" = "1" ] && echo "   ⏭️  Model uploads (SKIP_UPLOAD_MODELS=1)"
+        [ "$SKIP_UPLOAD_EXE" = "1" ] && echo "   ⏭️  Executable upload (SKIP_UPLOAD_EXE=1)"
+        [ "$SKIP_UPLOAD_DEPS" = "1" ] && echo "   ⏭️  Dependency uploads (SKIP_UPLOAD_DEPS=1)"
+        echo ""
+    fi
+    
     print_config
     
-    read -p "Continue with these settings? (y/n) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Cancelled."
-        exit 0
+    if [ "$NONINTERACTIVE" != "1" ]; then
+        read -p "Continue with these settings? (y/n) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Cancelled."
+            exit 0
+        fi
     fi
     
     check_ssh_connection
@@ -622,5 +695,5 @@ function main() {
     echo "         whisper_decoder_int8.rknn"
 }
 
-# Run main function
-main
+# Run main function with all arguments
+main "$@"
