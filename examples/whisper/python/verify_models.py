@@ -18,20 +18,14 @@ def is_arm_board():
     machine = platform.machine().lower()
     return 'arm' in machine or 'aarch64' in machine
 
-# 检查是否有 rknn-toolkit2 或 rknn-toolkit-lite2
+# 只依赖 rknn-toolkit-lite (RKNNLite) 在板上做推理验证
 try:
     from rknnlite.api import RKNNLite
     HAS_RKNN_LITE = True
-    HAS_RKNN = False
-    print("✅ 使用 rknn-toolkit-lite2 (板上推理)")
+    print("✅ 找到 rknn-toolkit-lite (RKNNLite) — 板上推理可用")
 except ImportError:
     HAS_RKNN_LITE = False
-    try:
-        from rknn.api import RKNN
-        HAS_RKNN = True
-        print("✅ 使用 rknn-toolkit2 (模型转换工具)")
-    except ImportError:
-        HAS_RKNN = False
+    print("⚠️ 未找到 rknn-toolkit-lite (RKNNLite)。如果要在开发板上运行推理，请安装 rknnlite。")
 
 
 def check_model_file(model_path, model_name):
@@ -77,34 +71,28 @@ def test_encoder(model_path, check_only=False):
     
     if check_only:
         return check_model_file(model_path, "Encoder")
-    
-    if not HAS_RKNN_LITE and not HAS_RKNN:
-        print("❌ 未安装 rknn-toolkit-lite2 或 rknn-toolkit2")
-        print("   板上推理需要: pip install rknnlite")
-        print("   或使用 --check-only 模式")
+
+    if not HAS_RKNN_LITE:
+        print("❌ 未安装 rknn-toolkit-lite (RKNNLite)。无法在板上做推理验证。")
+        print("   请在开发板的 Python 环境中安装: pip install rknnlite")
+        print("   或使用: python verify_models.py --check-only 在 PC 上只检查文件")
         return False
-    
-    # 优先使用 rknn-lite (板上推理)
+
+    # 仅在 ARM 开发板上使用 RKNNLite 做推理验证
     use_lite = HAS_RKNN_LITE and is_arm_board()
-    
+
     if not use_lite and not is_arm_board():
-        print("⚠️  警告: 不在 ARM 板上，RKNN 推理可能失败")
-        print("   建议使用 --check-only 模式或在开发板上运行")
-    
+        print("⚠️  检测到非 ARM 环境 — 跳过推理或请在开发板上运行（使用 --check-only 在 PC 上仅检查文件）")
+
     if not os.path.exists(model_path):
         print(f"❌ 模型文件不存在: {model_path}")
         return False
-    
+
     print(f"加载模型: {model_path}")
-    
-    if use_lite:
-        from rknnlite.api import RKNNLite
-        rknn = RKNNLite()
-        print("使用 RKNNLite (板上 NPU 推理)")
-    else:
-        from rknn.api import RKNN
-        rknn = RKNN(verbose=False)
-        print("使用 RKNN (模拟器/转换工具)")
+
+    from rknnlite.api import RKNNLite
+    rknn = RKNNLite()
+    print("使用 RKNNLite (板上 NPU 推理)")
     
     ret = rknn.load_rknn(model_path)
     if ret != 0:
@@ -195,34 +183,28 @@ def test_decoder(model_path, check_only=False):
     
     if check_only:
         return check_model_file(model_path, "Decoder")
-    
-    if not HAS_RKNN_LITE and not HAS_RKNN:
-        print("❌ 未安装 rknn-toolkit-lite2 或 rknn-toolkit2")
-        print("   板上推理需要: pip install rknnlite")
-        print("   或使用 --check-only 模式")
+
+    if not HAS_RKNN_LITE:
+        print("❌ 未安装 rknn-toolkit-lite (RKNNLite)。无法在板上做推理验证。")
+        print("   请在开发板的 Python 环境中安装: pip install rknnlite")
+        print("   或使用: python verify_models.py --check-only 在 PC 上只检查文件")
         return False
-    
-    # 优先使用 rknn-lite (板上推理)
+
+    # 仅在 ARM 开发板上使用 RKNNLite 做推理验证
     use_lite = HAS_RKNN_LITE and is_arm_board()
-    
+
     if not use_lite and not is_arm_board():
-        print("⚠️  警告: 不在 ARM 板上，RKNN 推理可能失败")
-        print("   建议使用 --check-only 模式或在开发板上运行")
-    
+        print("⚠️  检测到非 ARM 环境 — 跳过推理或请在开发板上运行（使用 --check-only 在 PC 上仅检查文件）")
+
     if not os.path.exists(model_path):
         print(f"❌ 模型文件不存在: {model_path}")
         return False
-    
+
     print(f"加载模型: {model_path}")
-    
-    if use_lite:
-        from rknnlite.api import RKNNLite
-        rknn = RKNNLite()
-        print("使用 RKNNLite (板上 NPU 推理)")
-    else:
-        from rknn.api import RKNN
-        rknn = RKNN(verbose=False)
-        print("使用 RKNN (模拟器/转换工具)")
+
+    from rknnlite.api import RKNNLite
+    rknn = RKNNLite()
+    print("使用 RKNNLite (板上 NPU 推理)")
     
     ret = rknn.load_rknn(model_path)
     if ret != 0:
@@ -358,10 +340,10 @@ def main():
                 print("已取消")
                 return 0
     
-    if not HAS_RKNN and not args.check_only:
-        print("\n❌ 错误: 未安装 rknn-toolkit2")
-        print("安装: pip install rknn-toolkit2")
-        print("或使用: python verify_models.py --check-only")
+    if not HAS_RKNN_LITE and not args.check_only:
+        print("\n❌ 错误: 未安装 rknn-toolkit-lite (RKNNLite)")
+        print("请在开发板的 Python 环境中安装: pip install rknnlite")
+        print("或在 PC 上使用: python verify_models.py --check-only 来仅检查模型文件")
         return 1
     
     # 测试 Encoder
