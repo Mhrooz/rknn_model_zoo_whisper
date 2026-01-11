@@ -37,6 +37,25 @@ class RKNN_model_container():
     
         return result
 
+    def analyze_accuracy(self, inputs, target='rk3588'):
+        if self.rknn is None:
+            print("ERROR: rknn has been released")
+            return -1
+
+        ret = self.rknn.accuracy_analysis(
+            inputs=inputs,
+            target=target
+        )
+
+        return ret
+
     def release(self):
         self.rknn.release()
         self.rknn = None
+
+if __name__ == "__main__":
+
+    whisper_encoder_model = RKNN_model_container('model/whisper_encoder_base_20s_fp16.rknn', target='RK3588')
+    whisper_encoder_model.analyze_accuracy(['model/test_en_encoder_input.npy'], target='rk3588')
+
+    pass
