@@ -108,25 +108,8 @@ def test_encoder(model_path, check_only=False):
  
     print("使用 RKNNLite (板上 NPU 推理)")
     
-    # 查询模型输入输出信息
-    try:
-        from rknnlite.api import RKNNLite as RKNN_QUERY
-        input_attrs = rknn.query(RKNN_QUERY.INPUT_ATTR)
-        output_attrs = rknn.query(RKNN_QUERY.OUTPUT_ATTR)
-        
-        print("\n📋 模型输入信息:")
-        if input_attrs and len(input_attrs) > 0:
-            for i, attr in enumerate(input_attrs):
-                print(f"  输入 {i}: shape={attr['dims']}, dtype={attr.get('dtype', 'unknown')}, "
-                      f"format={attr.get('fmt', 'unknown')}")
-        
-        print("\n📋 模型输出信息:")
-        if output_attrs and len(output_attrs) > 0:
-            for i, attr in enumerate(output_attrs):
-                print(f"  输出 {i}: shape={attr['dims']}, dtype={attr.get('dtype', 'unknown')}, "
-                      f"format={attr.get('fmt', 'unknown')}")
-    except Exception as e:
-        print(f"\n⚠️  无法查询模型信息: {e}")
+    # RKNNLite 不支持 query 方法，跳过模型信息查询
+    # 直接使用已知的输入输出形状进行测试
    
     # 创建模拟输入 (mel features: 1 x 80 x 3000)
     print("\n创建测试输入 (1, 80, 3000) - 模拟 30 秒音频的 mel 特征")
@@ -236,25 +219,8 @@ def test_decoder(model_path, check_only=False):
  
     print("使用 RKNNLite (板上 NPU 推理)")
     
-    # 查询模型输入输出信息
-    try:
-        from rknnlite.api import RKNNLite as RKNN_QUERY
-        input_attrs = rknn.query(RKNN_QUERY.INPUT_ATTR)
-        output_attrs = rknn.query(RKNN_QUERY.OUTPUT_ATTR)
-        
-        print("\n📋 模型输入信息:")
-        if input_attrs and len(input_attrs) > 0:
-            for i, attr in enumerate(input_attrs):
-                print(f"  输入 {i}: shape={attr['dims']}, dtype={attr.get('dtype', 'unknown')}, "
-                      f"format={attr.get('fmt', 'unknown')}")
-        
-        print("\n📋 模型输出信息:")
-        if output_attrs and len(output_attrs) > 0:
-            for i, attr in enumerate(output_attrs):
-                print(f"  输出 {i}: shape={attr['dims']}, dtype={attr.get('dtype', 'unknown')}, "
-                      f"format={attr.get('fmt', 'unknown')}")
-    except Exception as e:
-        print(f"\n⚠️  无法查询模型信息: {e}")
+    # RKNNLite 不支持 query 方法，跳过模型信息查询
+    # 直接使用已知的输入输出形状进行测试
        
    
     # 创建模拟输入
